@@ -1,5 +1,8 @@
 """Inputs - user input for humans.
 
+Fork by trevorablett that optionally allows the gamepad not to block
+execution.
+
 Inputs aims to provide easy to use, cross-platform, user input device
 support for Python. I.e. keyboards, mice, gamepads, etc.
 
@@ -56,6 +59,7 @@ from itertools import count
 from operator import itemgetter
 from multiprocessing import Process, Pipe
 import ctypes
+import fcntl
 
 __version__ = "0.5"
 
@@ -2370,12 +2374,14 @@ class InputDevice(object):  # pylint: disable=useless-object-inheritance
     def __init__(self, manager,
                  device_path=None,
                  char_path_override=None,
-                 read_size=1):
+                 read_size=1,
+                 read_block=True):
         self.read_size = read_size
         self.manager = manager
         self.__pipe = None
         self._listener = None
         self.leds = None
+        self.read_block = read_block
         if device_path:
             self._device_path = device_path
         else:
@@ -2454,6 +2460,10 @@ class InputDevice(object):  # pylint: disable=useless-object-inheritance
             try:
                 self._character_file = io.open(
                     self._character_device_path, 'rb')
+                if not self.read_block:
+                    fn = self._character_file.fileno()
+                    flag = fcntl.fcntl(fn, fcntl.F_GETFL)
+                    fcntl.fcntl(fn, fcntl.F_SETFL, flag | os.O_NONBLOCK)
             except PermissionError:
                 # Python 3
                 raise PermissionError(PERMISSIONS_ERROR_TEXT)
@@ -2469,8 +2479,14 @@ class InputDevice(object):  # pylint: disable=useless-object-inheritance
     def __iter__(self):
         while True:
             event = self._do_iter()
-            if event:
-                yield event
+            if self.read_block:
+                if event:
+                    yield event
+            else:
+                if event:
+                    yield event
+                else:
+                    yield []
 
     def _get_data(self, read_size):
         """Get data from the character device."""
@@ -2491,8 +2507,11 @@ class InputDevice(object):  # pylint: disable=useless-object-inheritance
         return read_size
 
     def _do_iter(self):
-        read_size = self._get_total_read_size()
-        data = self._get_data(read_size)
+        if self.read_block:
+            read_size = self._get_total_read_size()
+            data = self._get_data(read_size)
+        else:
+            data = self._get_data(-1)  # get all data that is in the buffer
         if not data:
             return None
         evdev_objects = iter_unpack(data)
@@ -2645,12 +2664,15 @@ def delay_and_stop(duration, dll, device_number):
 class GamePad(InputDevice):
     """A gamepad or other joystick-like device."""
     def __init__(self, manager, device_path,
-                 char_path_override=None):
+                 char_path_override=None,
+                 read_block=True):
         super(GamePad, self).__init__(manager,
                                       device_path,
-                                      char_path_override)
+                                      char_path_override,
+                                      read_block=read_block)
         self._write_file = None
         self.__device_number = None
+        self.read_block = read_block
         if WIN:
             if "Microsoft_Corporation_Controller" in self._device_path:
                 self.name = "Microsoft X-Box 360 pad"
@@ -2685,8 +2707,14 @@ class GamePad(InputDevice):
             if WIN:
                 self.__check_state()
             event = self._do_iter()
-            if event:
-                yield event
+            if self.read_block:
+                if event:
+                    yield event
+            else:
+                if event:
+                    yield event
+                else:
+                    yield []
 
     def __check_state(self):
         """On Windows, check the state and fill the event character device."""
@@ -3166,7 +3194,7 @@ class DeviceManager(object):  # pylint: disable=useless-object-inheritance
     devices."""
     # pylint: disable=too-many-instance-attributes
 
-    def __init__(self):
+    def __init__(self, gamepad_read_block=True):
         self.codes = {key: dict(value) for key, value in EVENT_MAP}
         self._raw = []
         self.keyboards = []
@@ -3178,6 +3206,7 @@ class DeviceManager(object):  # pylint: disable=useless-object-inheritance
         self.microbits = []
         self.xinput = None
         self.xinput_dll = None
+        self.gamepad_read_block = gamepad_read_block
         if WIN:
             self._raw_device_counts = {
                 'mice': 0,
@@ -3234,7 +3263,8 @@ class DeviceManager(object):  # pylint: disable=useless-object-inheritance
         elif device_type == 'joystick':
             self.gamepads.append(GamePad(self,
                                          device_path,
-                                         char_path_override))
+                                         char_path_override,
+                                         read_block=self.gamepad_read_block))
         else:
             self.other_devices.append(OtherDevice(self,
                                                   device_path,
@@ -3291,7 +3321,8 @@ class DeviceManager(object):  # pylint: disable=useless-object-inheritance
                     "/dev/input/by_id/" +
                     "usb-Microsoft_Corporation_Controller_%s-event-joystick"
                     % device_number)
-                self.gamepads.append(GamePad(self, device_path))
+                self.gamepads.append(GamePad(self, device_path,
+                                             read_block=self.gamepad_read_block))
                 continue
             if res != XINPUT_ERROR_DEVICE_NOT_CONNECTED:
                 raise RuntimeError(
@@ -3649,7 +3680,7 @@ class MicroBitListener(BaseListener):
         self.write_to_pipe(self.events)
 
 
-devices = DeviceManager()  # pylint: disable=invalid-name
+devices = DeviceManager(gamepad_read_block=False)  # pylint: disable=invalid-name
 
 
 def get_key():
