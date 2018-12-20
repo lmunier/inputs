@@ -3411,12 +3411,13 @@ class DeviceManager(object):  # pylint: disable=useless-object-inheritance
             if char_name in charnames:
                 continue
             name_file = os.path.join(eventdir, 'device', 'name')
-            with open(name_file) as name_file:
-                device_name = name_file.read().strip()
-                if device_name in self.codes['specials']:
-                    self._parse_device_path(
-                        self.codes['specials'][device_name],
-                        os.path.join('/dev/input', char_name))
+            if os.path.isfile(name_file):
+                with open(name_file) as name_file:
+                    device_name = name_file.read().strip()
+                    if device_name in self.codes['specials']:
+                        self._parse_device_path(
+                            self.codes['specials'][device_name],
+                            os.path.join('/dev/input', char_name))
 
     def __iter__(self):
         return iter(self.all_devices)
