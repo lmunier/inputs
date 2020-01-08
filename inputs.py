@@ -2566,6 +2566,12 @@ class Keyboard(InputDevice):
     Original umapped scan code, followed by the important key info
     followed by a sync.
     """
+    def __init__(self, manager, device_path, char_path_override, read_block):
+        super(Keyboard, self).__init__(manager,
+                                      device_path,
+                                      char_path_override,
+                                      read_block=read_block)
+
     def _set_device_path(self):
         super(Keyboard, self)._set_device_path()
         if MAC:
@@ -3194,7 +3200,7 @@ class DeviceManager(object):  # pylint: disable=useless-object-inheritance
     devices."""
     # pylint: disable=too-many-instance-attributes
 
-    def __init__(self, gamepad_read_block=True):
+    def __init__(self, gamepad_read_block=True, keyboard_read_block=True):
         self.codes = {key: dict(value) for key, value in EVENT_MAP}
         self._raw = []
         self.keyboards = []
@@ -3207,6 +3213,7 @@ class DeviceManager(object):  # pylint: disable=useless-object-inheritance
         self.xinput = None
         self.xinput_dll = None
         self.gamepad_read_block = gamepad_read_block
+        self.keyboard_read_block = keyboard_read_block
         if WIN:
             self._raw_device_counts = {
                 'mice': 0,
@@ -3256,7 +3263,8 @@ class DeviceManager(object):  # pylint: disable=useless-object-inheritance
         # 3. All seems good, append the device to the relevant list.
         if device_type == 'kbd':
             self.keyboards.append(Keyboard(self, device_path,
-                                           char_path_override))
+                                           char_path_override,
+                                           read_block=self.keyboard_read_block))
         elif device_type == 'mouse':
             self.mice.append(Mouse(self, device_path,
                                    char_path_override))
@@ -3680,7 +3688,7 @@ class MicroBitListener(BaseListener):
         self.write_to_pipe(self.events)
 
 
-devices = DeviceManager(gamepad_read_block=False)  # pylint: disable=invalid-name
+devices = DeviceManager(gamepad_read_block=False, keyboard_read_block=False)  # pylint: disable=invalid-name
 
 
 def get_key():
