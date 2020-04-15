@@ -3225,18 +3225,15 @@ class DeviceManager(object):  # pylint: disable=useless-object-inheritance
 
     def _post_init(self):
         """Call the find devices method for the relevant platform."""
-        try:
-            if WIN:
-                self._find_devices_win()
-            elif MAC:
-                self._find_devices_mac()
-            else:
-                self._find_devices()
-            self._update_all_devices()
-            if NIX:
-                self._find_leds()
-        except FileNotFoundError:
-            pass
+        if WIN:
+            self._find_devices_win()
+        elif MAC:
+            self._find_devices_mac()
+        else:
+            self._find_devices()
+        self._update_all_devices()
+        if NIX:
+            self._find_leds()
 
     def _update_all_devices(self):
         """Update the all_devices list."""
@@ -3264,22 +3261,29 @@ class DeviceManager(object):  # pylint: disable=useless-object-inheritance
         self._raw.append(realpath)
 
         # 3. All seems good, append the device to the relevant list.
-        if device_type == 'kbd':
-            self.keyboards.append(Keyboard(self, device_path,
-                                           char_path_override,
-                                           read_block=self.keyboard_read_block))
-        elif device_type == 'mouse':
-            self.mice.append(Mouse(self, device_path,
-                                   char_path_override))
-        elif device_type == 'joystick':
-            self.gamepads.append(GamePad(self,
-                                         device_path,
-                                         char_path_override,
-                                         read_block=self.gamepad_read_block))
-        else:
-            self.other_devices.append(OtherDevice(self,
-                                                  device_path,
-                                                  char_path_override))
+
+        # add a try except in case a device has been unplugged, and no longer has relevant files in
+        # /sys/class/input
+
+        try:
+            if device_type == 'kbd':
+                self.keyboards.append(Keyboard(self, device_path,
+                                               char_path_override,
+                                               read_block=self.keyboard_read_block))
+            elif device_type == 'mouse':
+                self.mice.append(Mouse(self, device_path,
+                                       char_path_override))
+            elif device_type == 'joystick':
+                self.gamepads.append(GamePad(self,
+                                             device_path,
+                                             char_path_override,
+                                             read_block=self.gamepad_read_block))
+            else:
+                self.other_devices.append(OtherDevice(self,
+                                                      device_path,
+                                                      char_path_override))
+        except FileNotFoundError:
+            pass
 
     def _find_xinput(self):
         """Find most recent xinput library."""
