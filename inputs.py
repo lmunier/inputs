@@ -59,7 +59,6 @@ from itertools import count
 from operator import itemgetter
 from multiprocessing import Process, Pipe
 import ctypes
-import fcntl
 
 __version__ = "0.5"
 
@@ -83,6 +82,7 @@ else:
     MSG = ctypes.Structure
 
 if NIX:
+    import fcntl
     from fcntl import ioctl
 
 OLD = sys.version_info < (3, 4)
@@ -2460,7 +2460,7 @@ class InputDevice(object):  # pylint: disable=useless-object-inheritance
             try:
                 self._character_file = io.open(
                     self._character_device_path, 'rb')
-                if not self.read_block:
+                if not self.read_block and not WIN:
                     fn = self._character_file.fileno()
                     flag = fcntl.fcntl(fn, fcntl.F_GETFL)
                     fcntl.fcntl(fn, fcntl.F_SETFL, flag | os.O_NONBLOCK)
@@ -2566,7 +2566,8 @@ class Keyboard(InputDevice):
     Original umapped scan code, followed by the important key info
     followed by a sync.
     """
-    def __init__(self, manager, device_path, char_path_override, read_block):
+    def __init__(self, manager, device_path,
+                 char_path_override=None, read_block=True):
         super(Keyboard, self).__init__(manager,
                                       device_path,
                                       char_path_override,
